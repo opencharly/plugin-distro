@@ -41,7 +41,9 @@
 	debootstrap?:      #DsDebootstrap
 	alpine_bootstrap?: #DsAlpineBootstrap
 	bootloader?:       #DsBootloader
+	disk_layout?:      #DsDiskLayout
 	dnf?:              #DsDnf
+	installer?:        #DsInstaller
 }
 
 // install_cmd is the bootstrap command; ubuntu sets it to "" (kept WITHOUT
@@ -112,6 +114,48 @@
 	install_template?:   string
 	initramfs_template?: string
 	fstab_template?:     string
+}
+
+// #DsDiskLayout mirrors spec's #DiskLayout: how a bootstrap VM's disk is partitioned and
+// mounted, for the distros whose on-disk shape is part of their identity. Both fields are
+// optional and both default to charly's historical behaviour (a bare root filesystem with
+// the ESP at /boot/efi), so a distro that omits the block is unaffected.
+#DsDiskLayout: {
+	esp_mount_point?: string & =~"^/"
+	subvolume?: [...#DsSubvolume]
+}
+
+// #DsSubvolume is one btrfs subvolume. `subvol=<name>` is prepended by the emitter, so
+// mount_options must not repeat it.
+#DsSubvolume: {
+	name:           string & !=""
+	mount_point:    string & =~"^/"
+	mount_options?: string
+}
+
+// #DsInstaller mirrors spec's #DistroInstaller: the format of the answers volume an
+// unattended installer reads (archinstall JSON, kickstart, preseed, autoinstall). The
+// FORMAT is the distro's; the DATA is the VM entity's.
+//
+// Added alongside disk_layout because it had drifted: spec gained #Distro.installer and
+// this input def did not, so an authored `installer:` block was rejected here with
+// `#DistroInput.installer: field not allowed` even though the core schema accepted it.
+#DsInstaller: {
+	volume_id: string & =~"^[A-Za-z0-9_-]{1,32}$"
+	fs?: *"iso9660" | "vfat"
+	file: [...#DsInstallerFile]
+	boot_arg?:    string
+	done?:        *"poweroff" | "marker"
+	marker_path?: string & =~"^/"
+}
+
+// #DsInstallerFile is ONE file placed on the answers volume. `when` is a Go-template
+// guard: the file is emitted only when it renders non-empty and not "false".
+#DsInstallerFile: {
+	path:    string & =~"^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$"
+	content: string
+	mode?:   string & =~"^0[0-7]{3,4}$"
+	when?:   string
 }
 #DsBaseUser: {
 	name: string & !=""
