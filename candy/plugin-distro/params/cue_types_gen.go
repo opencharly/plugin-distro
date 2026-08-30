@@ -56,7 +56,11 @@ type DistroInput struct {
 
 	Bootloader DsBootloader `yaml:"bootloader,omitempty" json:"bootloader,omitempty"`
 
+	Disk_layout DsDiskLayout `yaml:"disk_layout,omitempty" json:"disk_layout,omitempty"`
+
 	Dnf DsDnf `yaml:"dnf,omitempty" json:"dnf,omitempty"`
+
+	Installer DsInstaller `yaml:"installer,omitempty" json:"installer,omitempty"`
 }
 
 // install_cmd is the bootstrap command; ubuntu sets it to "" (kept WITHOUT
@@ -147,10 +151,6 @@ type DsBaseUser struct {
 type DsPacstrap struct {
 	Base_package []string `yaml:"base_package,omitempty" json:"base_package,omitempty"`
 
-	Keyring_init_cmd string `yaml:"keyring_init_cmd,omitempty" json:"keyring_init_cmd,omitempty"`
-
-	Mirrorlist_url string `yaml:"mirrorlist_url,omitempty" json:"mirrorlist_url,omitempty"`
-
 	Extra_repo []DsPacstrapRepo `yaml:"extra_repo,omitempty" json:"extra_repo,omitempty"`
 
 	Runtime_pacman_conf string `yaml:"runtime_pacman_conf,omitempty" json:"runtime_pacman_conf,omitempty"`
@@ -202,8 +202,61 @@ type DsBootloader struct {
 	Fstab_template string `yaml:"fstab_template,omitempty" json:"fstab_template,omitempty"`
 }
 
+// #DsDiskLayout mirrors spec's #DiskLayout: how a bootstrap VM's disk is partitioned and
+// mounted, for the distros whose on-disk shape is part of their identity. Both fields are
+// optional and both default to charly's historical behaviour (a bare root filesystem with
+// the ESP at /boot/efi), so a distro that omits the block is unaffected.
+type DsDiskLayout struct {
+	Esp_mount_point string `yaml:"esp_mount_point,omitempty" json:"esp_mount_point,omitempty"`
+
+	Subvolume []DsSubvolume `yaml:"subvolume,omitempty" json:"subvolume,omitempty"`
+}
+
+// #DsSubvolume is one btrfs subvolume. `subvol=<name>` is prepended by the emitter, so
+// mount_options must not repeat it.
+type DsSubvolume struct {
+	Name string `yaml:"name,omitempty" json:"name"`
+
+	Mount_point string `yaml:"mount_point,omitempty" json:"mount_point"`
+
+	Mount_options string `yaml:"mount_options,omitempty" json:"mount_options,omitempty"`
+}
+
 type DsDnf struct {
 	Max_parallel_downloads int64 `yaml:"max_parallel_downloads,omitempty" json:"max_parallel_downloads,omitempty"`
 
 	Fastestmirror bool `yaml:"fastestmirror,omitempty" json:"fastestmirror,omitempty"`
+}
+
+// #DsInstaller mirrors spec's #DistroInstaller: the format of the answers volume an
+// unattended installer reads (archinstall JSON, kickstart, preseed, autoinstall). The
+// FORMAT is the distro's; the DATA is the VM entity's.
+//
+// Added alongside disk_layout because it had drifted: spec gained #Distro.installer and
+// this input def did not, so an authored `installer:` block was rejected here with
+// `#DistroInput.installer: field not allowed` even though the core schema accepted it.
+type DsInstaller struct {
+	Volume_id string `yaml:"volume_id,omitempty" json:"volume_id"`
+
+	Fs string `yaml:"fs,omitempty" json:"fs,omitempty"`
+
+	File []DsInstallerFile `yaml:"file,omitempty" json:"file"`
+
+	Boot_arg string `yaml:"boot_arg,omitempty" json:"boot_arg,omitempty"`
+
+	Done string `yaml:"done,omitempty" json:"done,omitempty"`
+
+	Marker_path string `yaml:"marker_path,omitempty" json:"marker_path,omitempty"`
+}
+
+// #DsInstallerFile is ONE file placed on the answers volume. `when` is a Go-template
+// guard: the file is emitted only when it renders non-empty and not "false".
+type DsInstallerFile struct {
+	Path string `yaml:"path,omitempty" json:"path"`
+
+	Content string `yaml:"content,omitempty" json:"content"`
+
+	Mode string `yaml:"mode,omitempty" json:"mode,omitempty"`
+
+	When string `yaml:"when,omitempty" json:"when,omitempty"`
 }
