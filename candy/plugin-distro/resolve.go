@@ -4,6 +4,12 @@ package distrokind
 // project an authored spec.Distro into a ResolvedDistro the kernel's build engine
 // consumes without importing the concrete kind. Field-copy: the host keeps
 // RenderTemplate + the cache-mount vocab; the plugin owns the distro knowledge.
+//
+// A HAND-WRITTEN field copy is a silent-drop hazard, and it has already dropped twice:
+// disk_layout and installer were added to spec's #Distro AND to this plugin's own
+// #DistroInput, so authoring them was accepted everywhere and validated cleanly — and
+// then they were never carried across this function, so every consumer saw nil. See
+// resolve_parity_test.go, which now fails on any spec field this copy forgets.
 
 import (
 	"encoding/json"
@@ -29,6 +35,8 @@ func resolveDistro(in spec.DistroResolveInput) (spec.DistroResolveReply, error) 
 		Debootstrap:     d.Debootstrap,
 		AlpineBootstrap: d.AlpineBootstrap,
 		Bootloader:      d.Bootloader,
+		DiskLayout:      d.DiskLayout,
+		Installer:       d.Installer,
 		Dnf:             d.Dnf,
 		Raw:             in.Distro,
 	}}, nil
