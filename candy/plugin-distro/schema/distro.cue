@@ -82,8 +82,6 @@
 
 #DsPacstrap: {
 	base_package?: [...string]
-	keyring_init_cmd?: string
-	mirrorlist_url?:   string & =~"^https?://"
 	extra_repo?: [...#DsPacstrapRepo]
 	runtime_pacman_conf?: string
 }
