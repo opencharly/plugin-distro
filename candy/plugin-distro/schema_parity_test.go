@@ -7,6 +7,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/opencharly/spec/schema"
+	"github.com/opencharly/spec/schemaconcat"
 )
 
 // This plugin serves `kind: distro`, and it validates an authored `distro:` body against
@@ -16,35 +19,88 @@ import (
 // accepts a field and this plugin rejects it with `#DistroInput.<field>: field not allowed`,
 // which reads like the field does not exist at all.
 //
-// That is not hypothetical. spec gained `#Distro.installer` and this def did not, so an
-// authored installer: block was rejected here for months. `disk_layout` was about to
-// repeat it. This test makes the next omission fail HERE, next to the fix, instead of in
-// a consumer's build log.
+// That is not hypothetical, and it has now happened three times. spec gained
+// `#Distro.installer` and this def did not, so an authored installer: block was rejected
+// here for months. `disk_layout` was about to repeat it. And spec's #Format gained
+// `present_template`, which drifted SILENTLY because the guard compared TOP-LEVEL fields
+// only — the field lives on the inner #DsFormat, so nothing noticed.
 //
-// It asserts the TOP-LEVEL field set only. The inner defs deliberately differ in name
-// (#DsBootloader vs #Bootloader) and in Go annotations, so comparing them would be noise;
-// what matters is that every field a distro entity can author is authorable here.
-func TestDistroInputCoversEverySpecDistroField(t *testing.T) {
+// So this compares against spec's OWN CUE source — the embed in the spec module this plugin
+// already requires — instead of a hand-maintained list that can silently lag spec, and it
+// descends into every mirrored inner def. Field NAMES are compared, never bodies: the inner
+// defs deliberately differ in name (#DsBootloader vs #Bootloader) and in @go() annotations,
+// and normalising the name strips exactly that noise while still catching a dropped field.
+func TestEveryMirroredDefMatchesSpec(t *testing.T) {
+	specSrc := specSchemaSource(t)
 	local, err := os.ReadFile(filepath.Join("schema", "distro.cue"))
 	if err != nil {
 		t.Fatalf("reading this plugin's schema: %v", err)
 	}
-	got := topLevelFields(t, string(local), "#DistroInput")
+	src := string(local)
 
-	// The field set spec's #Distro authorises, as of the spec this plugin is written
-	// against. Kept as a literal rather than read from the spec module because the
-	// plugin's schema is deliberately standalone — importing spec here to check
-	// standalone-ness would defeat the point.
-	want := []string{
-		"alpine_bootstrap", "base_user", "bootloader", "bootstrap", "debootstrap",
-		"disk_layout", "dnf", "format", "inherit_packages", "inherits", "installer",
-		"pacstrap", "version", "workaround",
+	// The authored top level must authorise exactly what spec's #Distro does.
+	assertSameFields(t, "#DistroInput", topLevelFields(t, src, "#DistroInput"),
+		"#Distro", topLevelFields(t, specSrc, "#Distro"))
+
+	// Every inner def this schema mirrors is named "#Ds" + spec's def name; spec's two
+	// distro-scoped installer defs carry an extra "Distro" segment.
+	for _, name := range mirroredDefs(t, src) {
+		trimmed := strings.TrimPrefix(name, "#Ds")
+		specName := "#" + trimmed
+		if !strings.Contains(specSrc, specName+": {") {
+			specName = "#Distro" + trimmed
+		}
+		if !strings.Contains(specSrc, specName+": {") {
+			t.Errorf("this schema defines %s, but spec defines neither %s nor #Distro%s",
+				name, "#"+trimmed, trimmed)
+			continue
+		}
+		assertSameFields(t, name, topLevelFields(t, src, name),
+			specName, topLevelFields(t, specSrc, specName))
 	}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Errorf("#DistroInput fields drifted from spec's #Distro.\n got: %v\nwant: %v\n"+
-			"If spec added a field, mirror it here; if spec removed one, remove it here "+
-			"and from `want`.", got, want)
+}
+
+// specSchemaSource is spec's whole CUE schema, concatenated from the embed in the spec
+// module this plugin requires — the same FS charly core splices at runtime.
+func specSchemaSource(t *testing.T) string {
+	t.Helper()
+	src, files, err := schemaconcat.ConcatSchema(schema.FS, ".", nil)
+	if err != nil {
+		t.Fatalf("concatenating spec's embedded schema: %v", err)
 	}
+	if src == "" || len(files) == 0 {
+		t.Fatal("spec's embedded schema concatenated to nothing — the guard would pass vacuously")
+	}
+	return src
+}
+
+func assertSameFields(t *testing.T, localName string, got []string, specName string, want []string) {
+	t.Helper()
+	if len(got) == 0 || len(want) == 0 {
+		t.Errorf("%s or %s parsed to ZERO fields — the extractor, not the schema, is broken",
+			localName, specName)
+		return
+	}
+	if strings.Join(got, ",") == strings.Join(want, ",") {
+		return
+	}
+	t.Errorf("%s fields drifted from spec's %s.\n got: %v\nwant: %v\n"+
+		"If spec added a field, mirror it here; if spec removed one, remove it here.",
+		localName, specName, got, want)
+}
+
+// mirroredDefs returns every "#Ds*" def this schema defines, sorted.
+func mirroredDefs(t *testing.T, src string) []string {
+	t.Helper()
+	var out []string
+	for _, m := range regexp.MustCompile(`(?m)^(#Ds[A-Za-z0-9_]+):\s*\{`).FindAllStringSubmatch(src, -1) {
+		out = append(out, m[1])
+	}
+	sort.Strings(out)
+	if len(out) == 0 {
+		t.Fatal("no #Ds* defs found — the extractor is broken and the guard would pass vacuously")
+	}
+	return out
 }
 
 // Every field #DistroInput declares must reference a def that actually exists in this
