@@ -58,6 +58,7 @@
 	cache_mount?: [...#DsCacheMount]
 	section_field?: {[string]: "list" | "list_of_maps"}
 	uninstall_template?: string
+	present_template?: string
 	phase?:              #DsPhaseSet
 	validate?: [...#DsFormatRule]
 	secondary?: bool

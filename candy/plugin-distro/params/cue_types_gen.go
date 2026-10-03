@@ -89,6 +89,8 @@ type DsFormat struct {
 
 	Uninstall_template string `yaml:"uninstall_template,omitempty" json:"uninstall_template,omitempty"`
 
+	Present_template string `yaml:"present_template,omitempty" json:"present_template,omitempty"`
+
 	Phase DsPhaseSet `yaml:"phase,omitempty" json:"phase,omitempty"`
 
 	Validate []DsFormatRule `yaml:"validate,omitempty" json:"validate,omitempty"`
