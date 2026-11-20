@@ -262,3 +262,78 @@ type DsInstallerFile struct {
 
 	When string `yaml:"when,omitempty" json:"when,omitempty"`
 }
+
+// #OsPackageManager — the package managers charly drives (DESIGN.cue:166).
+type OsPackageManager string
+
+// #OsInit — the init node per role (DESIGN.cue:836). Both roles are REQUIRED: an os that
+// named only one could not build both a container and a system image of itself.
+type OsInit struct {
+	Container string `yaml:"container,omitempty" json:"container"`
+
+	System string `yaml:"system,omitempty" json:"system"`
+}
+
+// #OsBoot — the boot content of the disk form (DESIGN.cue:839).
+type OsBoot struct {
+	Firmware string `yaml:"firmware,omitempty" json:"firmware"`
+
+	Kernel string `yaml:"kernel,omitempty" json:"kernel,omitempty"`
+
+	Initrd string `yaml:"initrd,omitempty" json:"initrd,omitempty"`
+
+	Command_line string `yaml:"command_line,omitempty" json:"command_line,omitempty"`
+}
+
+// #OsInput — the authored body of an `os:` node.
+//
+// The shared half names the SAME inner defs as #DistroInput, so a `bootstrap:` or a
+// `format:` block means the same thing on both kinds; that is what keeps the two from
+// becoming two vocabularies while still letting each def compile standalone.
+type OsInput struct {
+	Description string `yaml:"description,omitempty" json:"description"`
+
+	Family string `yaml:"family,omitempty" json:"family"`
+
+	Version string `yaml:"version,omitempty" json:"version,omitempty"`
+
+	Package_manager OsPackageManager `yaml:"package_manager,omitempty" json:"package_manager"`
+
+	Init OsInit `yaml:"init,omitempty" json:"init"`
+
+	Boot OsBoot `yaml:"boot,omitempty" json:"boot,omitempty"`
+
+	// §16.4: the os of the stack's source owns every CONVERSION.
+	Inherit []string `yaml:"inherit,omitempty" json:"inherit,omitempty"`
+
+	Inherit_package []string `yaml:"inherit_package,omitempty" json:"inherit_package,omitempty"`
+
+	Bootstrap DsBootstrap `yaml:"bootstrap,omitempty" json:"bootstrap,omitempty"`
+
+	Workaround []string `yaml:"workaround,omitempty" json:"workaround,omitempty"`
+
+	Format map[string]DsFormat `yaml:"format,omitempty" json:"format,omitempty"`
+
+	Base_user DsBaseUser `yaml:"base_user,omitempty" json:"base_user,omitempty"`
+
+	Bootstrapper OsBootstrapper `yaml:"bootstrapper,omitempty" json:"bootstrapper,omitempty"`
+
+	Bootloader DsBootloader `yaml:"bootloader,omitempty" json:"bootloader,omitempty"`
+
+	Disk_layout DsDiskLayout `yaml:"disk_layout,omitempty" json:"disk_layout,omitempty"`
+
+	Installer DsInstaller `yaml:"installer,omitempty" json:"installer,omitempty"`
+}
+
+// #OsBootstrapper — the from-scratch tools, by the family that ships them. The contract
+// groups the three the build vocabulary flattens (distro.cue's pacstrap / debootstrap /
+// alpine_bootstrap), which is why this def exists instead of three fields: an `os:` node
+// says WHICH bootstrappers it has, and the grouping is what makes "an os may have several"
+// expressible as one field rather than as an implicit convention.
+type OsBootstrapper struct {
+	Pacstrap string `yaml:"pacstrap,omitempty" json:"pacstrap,omitempty"`
+
+	Debootstrap string `yaml:"debootstrap,omitempty" json:"debootstrap,omitempty"`
+
+	Alpine string `yaml:"alpine,omitempty" json:"alpine,omitempty"`
+}
