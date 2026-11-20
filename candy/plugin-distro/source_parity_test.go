@@ -263,3 +263,56 @@ func TestNewMetaAdvertisesBothVocabularyWords(t *testing.T) {
 		}
 	}
 }
+
+// TestSourceInputOrListNamesExactlyTheFourArms inspects the GATE itself.
+//
+// #SourceInput is `or([#SourceAlt.oci, #SourceAlt.disk, #SourceAlt.iso, #SourceAlt.bootstrap])`.
+// TestSourceAltHasExactlySpecsFourOrigins enumerates the UNION's arms, which proves the four are
+// DEFINED — but nothing inspected the or([...]) that DECIDES which of them a value may be. Dropping
+// `iso` from that list admits three origins instead of four, and until this test existed no
+// assertion failed: the union still had four arms, and the gate silently offered fewer.
+//
+// "Four origins in both directions" is only true when this list is checked, so this is what makes
+// the body's claim honest rather than half-proven.
+func TestSourceInputOrListNamesExactlyTheFourArms(t *testing.T) {
+	src := defShape(string(mustRead(t, "schema/source.cue")))
+
+	// The or([...]) argument list, comment-stripped and whitespace-normalised.
+	i := strings.Index(src, "#SourceInput:")
+	if i < 0 {
+		t.Fatal("no #SourceInput def")
+	}
+	rest := src[i+len("#SourceInput:"):]
+	open := strings.Index(rest, "or([")
+	if open < 0 {
+		t.Fatal("#SourceInput is not an or([...]) — the gate admits one arm by construction, and " +
+			"a different shape would have to be re-argued")
+	}
+	close := strings.Index(rest[open:], "])")
+	if close < 0 {
+		t.Fatal("the or([...]) is not closed")
+	}
+	list := rest[open+len("or([") : open+close]
+
+	got := map[string]bool{}
+	for _, m := range regexp.MustCompile(`#SourceAlt\.([a-z_]+)`).FindAllStringSubmatch(list, -1) {
+		got[m[1]] = true
+	}
+
+	want := []string{"oci", "disk", "iso", "bootstrap"}
+	for _, arm := range want {
+		if !got[arm] {
+			t.Errorf("#SourceInput's or([...]) does not name #SourceAlt.%s — that origin is "+
+				"DEFINED but UNADMITTED, so an authored %s: body would be rejected by the gate "+
+				"even though the union declares it", arm, arm)
+		}
+		delete(got, arm)
+	}
+	for arm := range got {
+		t.Errorf("#SourceInput's or([...]) names #SourceAlt.%s, which is not one of the four "+
+			"origins D-SRC-1 allows", arm)
+	}
+	if len(want) != 4 {
+		t.Fatalf("the expected origin set is %d, not 4", len(want))
+	}
+}
