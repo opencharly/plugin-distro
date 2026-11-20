@@ -10,9 +10,10 @@
 // duplication of spec's authored surface is SANCTIONED (see schema_parity_test.go's
 // header — the plugin schema must compile standalone while spec's defs must also generate
 // Go), and #DistroInput is a CLOSED struct, so it cannot be unified with five extra
-// fields. What is reused rather than duplicated is everything that MATTERS: every inner
-// shape (#DsBootstrap, #DsFormat, #DsDiskLayout, …) is the same def #DistroInput uses, so
-// an os node and a distro node cannot disagree about what a `format:` block is.
+// fields. What is reused rather than duplicated is SIX of the ten inner shapes
+// (#DsBootstrap, #DsFormat, #DsDiskLayout, #DsBaseUser, #DsBootloader, #DsInstaller) — the
+// same defs #DistroInput uses, so an os node and a distro node cannot disagree about what a
+// `format:` block is. The other four are described under THE PARITY GUARD below.
 //
 // What an `os:` node adds to a distro node is the five fields that make it an OPERATING
 // SYSTEM rather than a set of build hints: who it is (description, family), what installs
@@ -25,8 +26,11 @@
 // def's TOP-LEVEL field names against spec's #Os (added in opencharly/spec#402) in both
 // directions, for the reason that file's header gives: when the two drift, the failure reads
 // as "the field does not exist" rather than "the two defs disagree". It compares NAMES only
-// and does not descend into the inner defs — the inner shapes here are #Ds* defs shared with
-// #DistroInput, and those are already guarded by TestEveryMirroredDefMatchesSpec.
+// and does not descend into the inner defs — and those are TWO kinds. Six are #Ds* defs
+// shared with #DistroInput, already guarded by TestEveryMirroredDefMatchesSpec. Four are NOT:
+// #OsPackageManager, #OsInit, #OsBoot and #OsBootstrapper are this file's own names, so that
+// sweep never reaches them, and TestOsOnlyInnerDefsMatchSpec guards exactly those four
+// against spec's _packageManager / _initRole / #Boot / #OsBootstrapper.
 
 // ── the five fields an os adds ───────────────────────────────────────────────
 
