@@ -169,8 +169,23 @@ func TestOsInputAddsExactlyOsFields(t *testing.T) {
 		t.Fatalf("reading this plugin's os schema: %v", err)
 	}
 
-	osFields := topLevelFields(t, string(local), "#OsInput")
-	specOs := topLevelFields(t, specSrc, "#Os")
+	// defFields, NOT topLevelFields: the shared helper's regex is `^\t([a-z_]+)\??:` and does
+	// not match a REQUIRED field, so `description!`, `family!`, `package_manager!` and `init!`
+	// extract as nothing on BOTH sides — zero-vs-zero, which PASSES. With topLevelFields this
+	// test reported agreement while the four fields it exists to compare were invisible, and
+	// deleting `init!` from #OsInput failed no test at all. defFields is the sibling this PR
+	// added for exactly this, and the outer comparison needed it as much as the inner one.
+	osFields := defFields(t, string(local), "#OsInput")
+	specOs := defFields(t, specSrc, "#Os")
+
+	// The required half must be visibly present, or the comparison below is vacuous: assert
+	// the four D-CANDY-3 / D-SRC-2 fields were actually READ.
+	for _, required := range []string{"description", "family", "package_manager", "init"} {
+		if !contains(specOs, required) {
+			t.Fatalf("spec's #Os field %q did not extract — the extractor is broken, not the "+
+				"schema, and the comparison below would pass vacuously", required)
+		}
+	}
 
 	// Every field spec's #Os declares must exist here. A MISSING field means an authored
 	// `os:` body core validates and this plugin then rejects.
