@@ -16,11 +16,14 @@ package distrokind
 // less than one written before it.
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	pb "github.com/opencharly/spec/proto"
 )
 
 // TestSourceInnerDefsMatchSpec guards the four helper defs against spec's, by FIELDS.
@@ -200,4 +203,63 @@ func unionArms(t *testing.T, src, defName string) []string {
 		t.Fatalf("%s parsed to ZERO arms — the extractor, not the schema, is broken", defName)
 	}
 	return arms
+}
+
+// TestNewMetaAdvertisesBothVocabularyWords is the capability-registration half, and it is the one
+// a green suite otherwise cannot see.
+//
+// Every other test in this package calls provider{}.Invoke(...) DIRECTLY, bypassing NewMeta. So a
+// misspelled Word ("sorce") or a wrong InputDef would make the kind unreachable from a real host
+// and ship green: nothing would fail, because nothing would ask the plugin what it serves.
+//
+// It reads the reply a host reads — Describe — rather than the Go slice, because the slice is the
+// input to a builder that could itself drop a row.
+func TestNewMetaAdvertisesBothVocabularyWords(t *testing.T) {
+	caps, err := NewMeta().Describe(context.Background(), &pb.Empty{})
+	if err != nil {
+		t.Fatalf("Describe: %v", err)
+	}
+
+	// The word → InputDef mapping the host resolves a kind through.
+	want := map[string]string{
+		"distro": "#DistroInput",
+		"os":     "#OsInput",
+		"source": "#SourceInput",
+	}
+	got := map[string]string{}
+	for _, c := range caps.GetProvided() {
+		if c.GetClass() == "kind" {
+			got[c.GetWord()] = c.GetInputDef()
+		}
+	}
+
+	for word, def := range want {
+		if _, ok := got[word]; !ok {
+			t.Errorf("Describe does not advertise the %q kind — an authored %s: node would be "+
+				"unreachable from a host, and every direct Invoke test would still pass",
+				word, word)
+			continue
+		}
+		if got[word] != def {
+			t.Errorf("Describe advertises %q with InputDef %q, want %q — the host would resolve "+
+				"the wrong gate def", word, got[word], def)
+		}
+	}
+
+	// And nothing extra: a kind word this plugin does not implement is worse than a missing one,
+	// because the host would route an authored body to a provider that cannot canonicalise it.
+	for word := range got {
+		if _, ok := want[word]; !ok {
+			t.Errorf("Describe advertises the unexpected kind %q", word)
+		}
+	}
+
+	// The schema must actually CARRY each gate def, or InputDef names a def the host cannot find.
+	src := string(mustRead(t, "schema/source.cue")) + string(mustRead(t, "schema/os.cue")) +
+		string(mustRead(t, "schema/distro.cue"))
+	for _, def := range want {
+		if !strings.Contains(src, def+":") {
+			t.Errorf("Describe advertises InputDef %q but no schema file defines it", def)
+		}
+	}
 }
