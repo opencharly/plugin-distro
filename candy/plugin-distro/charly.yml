@@ -9,7 +9,16 @@ plugin-distro:
         plugin:
             source: github.com/opencharly/plugin-distro/candy/plugin-distro
             providers:
+                # THREE kind words, and the two below are load-bearing at PARSE time.
+                # charly/plugin_prescan.go reads this list to fill `declaredKind`, which becomes
+                # spec.Threaded.Kinds — the ONLY path a kind word has to be recognized, because
+                # spec.KindWords is empty now that every kind is plugin-served. A word absent
+                # here is rejected at parse with "no kind discriminator" EVEN THOUGH NewMeta
+                # advertises it and the provider handles it: the Go capability makes the kind
+                # SERVABLE, this list makes it AUTHORABLE.
                 - kind:distro
+                - kind:os
+                - kind:source
         plan:
             - check: the distro kind plugin ships a buildable Go module the host compiles in (default) or serves out-of-process; its entity decode is exercised by any box/deploy composing a `distro:` node
               id: distro-kind-module-present
