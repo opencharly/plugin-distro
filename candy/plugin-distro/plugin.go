@@ -57,29 +57,9 @@ func (provider) Invoke(_ context.Context, req *pb.InvokeRequest) (*pb.InvokeRepl
 		// five fields a distro body does not, so unmarshalling it into spec.Distro would
 		// silently drop them and hand the host back a body it had just validated as complete.
 		if req.GetReserved() == "os" {
-			var in spec.Os
-			if len(req.GetParamsJson()) > 0 {
-				if err := json.Unmarshal(req.GetParamsJson(), &in); err != nil {
-					return nil, fmt.Errorf("os kind: decode entity: %w", err)
-				}
-			}
-			out, err := json.Marshal(in)
-			if err != nil {
-				return nil, fmt.Errorf("os kind: marshal entity: %w", err)
-			}
-			return &pb.InvokeReply{ResultJson: out}, nil
+			return opLoadCanonical[spec.Os]("os", req)
 		}
-		var in spec.Distro
-		if len(req.GetParamsJson()) > 0 {
-			if err := json.Unmarshal(req.GetParamsJson(), &in); err != nil {
-				return nil, fmt.Errorf("distro kind: decode entity: %w", err)
-			}
-		}
-		out, err := json.Marshal(in)
-		if err != nil {
-			return nil, fmt.Errorf("distro kind: marshal entity: %w", err)
-		}
-		return &pb.InvokeReply{ResultJson: out}, nil
+		return opLoadCanonical[spec.Distro]("distro", req)
 	case sdk.OpResolve:
 		// The distro de-type (Cutover M): project the opaque distro body into a
 		// ResolvedDistro the kernel's build engine consumes.
@@ -101,4 +81,27 @@ func (provider) Invoke(_ context.Context, req *pb.InvokeRequest) (*pb.InvokeRepl
 	default:
 		return nil, fmt.Errorf("distro kind: unsupported op %q", req.GetOp())
 	}
+}
+
+// opLoadCanonical decodes an authored entity body into T and re-marshals it as canonical
+// JSON, which is the whole of an OpLoad for a kind whose Go type is the authority on its own
+// shape.
+//
+// GENERIC ON PURPOSE (R2): the `os` and `distro` arms differ ONLY by type, so writing them
+// twice invites exactly the drift this file's parity tests exist to catch — one arm gaining a
+// step the other lacks (a normalisation, a field fix-up) and the two words silently acquiring
+// different canonical forms. The word is threaded through for the error prefix only, so a
+// failure still names which kind it came from.
+func opLoadCanonical[T any](word string, req *pb.InvokeRequest) (*pb.InvokeReply, error) {
+	var in T
+	if len(req.GetParamsJson()) > 0 {
+		if err := json.Unmarshal(req.GetParamsJson(), &in); err != nil {
+			return nil, fmt.Errorf("%s kind: decode entity: %w", word, err)
+		}
+	}
+	out, err := json.Marshal(in)
+	if err != nil {
+		return nil, fmt.Errorf("%s kind: marshal entity: %w", word, err)
+	}
+	return &pb.InvokeReply{ResultJson: out}, nil
 }
