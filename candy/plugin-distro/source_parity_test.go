@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 
+	"cuelang.org/go/cue"
+	"cuelang.org/go/cue/cuecontext"
 	pb "github.com/opencharly/spec/proto"
 )
 
@@ -315,4 +317,97 @@ func TestSourceInputOrListNamesExactlyTheFourArms(t *testing.T) {
 	if len(want) != 4 {
 		t.Fatalf("the expected origin set is %d, not 4", len(want))
 	}
+}
+
+// TestSourceInputAdmitsExactlyOneOrigin proves D-SRC-1, which the body claimed was structural
+// and no test checked.
+//
+// THE CLAIM: "#SourceAlt is an S4 key-tagged union, so exactly one origin is admitted — two
+// origins and zero origins are both unrepresentable."
+//
+// THE SUBTLETY THAT MAKES IT TESTABLE AND ALMOST HID IT: `Validate()` alone ACCEPTS an
+// incomplete value, so a body naming zero origins "validates" clean against every arm it failed
+// to satisfy. Only cue.Concrete(true) asks the question D-SRC-1 poses. Measured:
+//
+//	{description:"d", os:"arch"}                    Validate() -> nil          (WRONG)
+//	{description:"d", os:"arch"}                    Concrete    -> incomplete   (right)
+//	{oci:"…", disk:{…}, description:"d", os:"arch"} Concrete    -> rejected     (right)
+//	{oci:"…", description:"d", os:"arch"}           Concrete    -> nil          (right)
+//
+// A test built on Validate() would have asserted nothing and passed — the fourth variant of that
+// mistake in this change.
+func TestSourceInputAdmitsExactlyOneOrigin(t *testing.T) {
+	in := compiledSourceInput(t)
+
+	const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	for _, tc := range []struct {
+		name   string
+		body   string
+		reject bool
+		why    string
+	}{
+		{
+			"one oci origin",
+			`{oci: "quay.io/archlinux/archlinux:base", description: "d", os: "arch"}`,
+			false, "",
+		},
+		{
+			"two origins",
+			`{oci: "quay.io/a/b:t", disk: {url: "https://e.invalid/a", sha256: "` + sha + `"}, description: "d", os: "arch"}`,
+			true, "D-SRC-1: exactly one origin — the union is what must enforce it",
+		},
+		{
+			"zero origins",
+			`{description: "d", os: "arch"}`,
+			true, "D-SRC-1: exactly one origin — an origin-less source starts a stack from nothing",
+		},
+		{
+			"an unknown key beside one origin",
+			`{oci: "quay.io/a/b:t", description: "d", os: "arch", bogus: 1}`,
+			true, "the arm is CLOSED — an unknown key is a typo, not a passthrough",
+		},
+		{
+			"an origin missing its required os",
+			`{oci: "quay.io/a/b:t", description: "d"}`,
+			true, "D-SRC-2: every source names the os that owns its conversions",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := in.Unify(in.Context().CompileString(tc.body)).Validate(cue.Concrete(true))
+			if tc.reject && err == nil {
+				t.Errorf("#SourceInput ACCEPTED %q — %s", tc.name, tc.why)
+			}
+			if !tc.reject && err != nil {
+				t.Errorf("#SourceInput refused %q: %v", tc.name, err)
+			}
+		})
+	}
+}
+
+// compiledSourceInput compiles THIS plugin's schema files and returns #SourceInput.
+//
+// It compiles the shipped files rather than a hand-written excerpt, so the test exercises the
+// unit the host actually splices — the same principle schema_parity_test.go states for its own
+// fixture.
+func compiledSourceInput(t *testing.T) cue.Value {
+	t.Helper()
+	var src strings.Builder
+	src.WriteString("package schema\n")
+	for _, f := range []string{"source.cue", "distro.cue"} {
+		b, err := os.ReadFile(filepath.Join("schema", f))
+		if err != nil {
+			t.Fatalf("reading schema/%s: %v", f, err)
+		}
+		src.Write(b)
+		src.WriteString("\n")
+	}
+	v := cuecontext.New().CompileString(src.String())
+	if err := v.Err(); err != nil {
+		t.Fatalf("compiling this plugin's schema: %v", err)
+	}
+	in := v.LookupPath(cue.ParsePath("#SourceInput"))
+	if !in.Exists() {
+		t.Fatal("#SourceInput does not resolve in this plugin's own schema")
+	}
+	return in
 }
