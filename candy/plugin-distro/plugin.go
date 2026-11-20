@@ -63,6 +63,22 @@ func (provider) Invoke(_ context.Context, req *pb.InvokeRequest) (*pb.InvokeRepl
 	case sdk.OpResolve:
 		// The distro de-type (Cutover M): project the opaque distro body into a
 		// ResolvedDistro the kernel's build engine consumes.
+		//
+		// WORD-AWARE, and it REFUSES rather than truncating. Now that NewMeta advertises the
+		// `os` word, a host that dispatches kind-blindly can send an `os` request here too —
+		// and this arm decodes into spec.DistroResolveInput, which carries none of the five
+		// fields that make a body an os. Silently resolving it would produce a ResolvedDistro
+		// built from a truncated body: the exact defect the OpLoad arm above exists to
+		// prevent, one operation over.
+		//
+		// An error is the honest answer while `os` resolution is unimplemented: it makes a
+		// misroute LOUD at the boundary instead of shipping a wrong resolved distro into a
+		// build. When os resolution is designed, it gets its own arm here, not a fallthrough.
+		if req.GetReserved() != "" && req.GetReserved() != "distro" {
+			return nil, fmt.Errorf("distro kind: OpResolve is not implemented for word %q; "+
+				"this arm resolves `distro:` bodies only, and decoding an %q body into "+
+				"spec.DistroResolveInput would truncate it", req.GetReserved(), req.GetReserved())
+		}
 		var in spec.DistroResolveInput
 		if len(req.GetParamsJson()) > 0 {
 			if err := json.Unmarshal(req.GetParamsJson(), &in); err != nil {

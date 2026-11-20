@@ -14,6 +14,7 @@ package distrokind
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/opencharly/sdk"
@@ -100,5 +101,30 @@ func TestInvokeLoadStillServesDistro(t *testing.T) {
 			t.Errorf("OpLoad for word \"distro\" returned %q — that is an os field, so the "+
 				"request was routed into the wrong arm", field)
 		}
+	}
+}
+
+// TestInvokeResolveRefusesTheOsWord is the other half of serving two words.
+//
+// NewMeta advertises `os` to a host that dispatches kind-blindly, so an `os` request CAN
+// reach OpResolve — and that arm decodes into spec.DistroResolveInput, which carries none of
+// the five fields that make a body an os. Resolving it silently would build a ResolvedDistro
+// from a truncated body: the defect the OpLoad arm exists to prevent, one operation over.
+//
+// Refusing is the honest answer while os resolution is unimplemented, and the assertion is
+// specifically that it is LOUD rather than that it returns a particular message — a future
+// os arm will replace this error and this test should be rewritten with it, not deleted.
+func TestInvokeResolveRefusesTheOsWord(t *testing.T) {
+	_, err := provider{}.Invoke(context.Background(), &pb.InvokeRequest{
+		Op:         sdk.OpResolve,
+		Reserved:   "os",
+		ParamsJson: []byte(osBody),
+	})
+	if err == nil {
+		t.Fatal("OpResolve accepted the \"os\" word — it decodes into spec.DistroResolveInput, " +
+			"which drops the five os-only fields, so a build would receive a truncated body")
+	}
+	if !strings.Contains(err.Error(), `"os"`) {
+		t.Errorf("the refusal does not name the word it refused: %v", err)
 	}
 }
