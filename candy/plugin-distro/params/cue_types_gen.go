@@ -337,3 +337,76 @@ type OsBootstrapper struct {
 
 	Alpine string `yaml:"alpine,omitempty" json:"alpine,omitempty"`
 }
+
+// #SourceImageRef — an OCI image reference, the way `podman pull` spells one: registry/repo,
+// an optional tag, an optional digest. NOT #OciRef, which requires an explicit `oci://` scheme;
+// a source's `oci:` origin carries none.
+type SourceImageRef string
+
+// #SourceDownload — a remote artefact, pinned. D-SRC-1: a remote origin is pinned by sha256,
+// so an unpinned one is unrepresentable rather than merely discouraged.
+type SourceDownload struct {
+	Url string `yaml:"url,omitempty" json:"url"`
+
+	Sha256 string `yaml:"sha256,omitempty" json:"sha256"`
+}
+
+// #SourceIso — a disk image plus the installer's own answer file.
+type SourceIso struct {
+	Url string `yaml:"url,omitempty" json:"url"`
+
+	Sha256 string `yaml:"sha256,omitempty" json:"sha256"`
+
+	Config map[string]any/* CUE top */ `yaml:"config,omitempty" json:"config,omitempty"`
+}
+
+// #SourceBootstrap — a root filesystem made from scratch by a builder.
+type SourceBootstrap struct {
+	Builder string `yaml:"builder,omitempty" json:"builder"`
+
+	Package map[string][]string `yaml:"package,omitempty" json:"package,omitempty"`
+}
+
+// #SourceInput — the authored body of a `source:` node.
+//
+// #SourceAlt is the union and #SourceInput the node: the node is the union plus the two fields
+// EVERY origin carries (D-SRC-2's `os`, and the `description` that makes the node readable).
+// They are spelled out per arm rather than spread from a helper, because this module's CUE
+// carries no `@experiment(explicitopen)` and definition-spread needs it — and spelling them
+// out is what makes "exactly one origin" readable where it is enforced.
+type SourceAlt struct {
+	Oci struct {
+		Oci SourceImageRef `yaml:"oci,omitempty" json:"oci"`
+
+		Description string `yaml:"description,omitempty" json:"description"`
+
+		Os string `yaml:"os,omitempty" json:"os"`
+	} `yaml:"oci,omitempty" json:"oci"`
+
+	Disk struct {
+		Disk SourceDownload `yaml:"disk,omitempty" json:"disk"`
+
+		Description string `yaml:"description,omitempty" json:"description"`
+
+		Os string `yaml:"os,omitempty" json:"os"`
+	} `yaml:"disk,omitempty" json:"disk"`
+
+	Iso struct {
+		Iso SourceIso `yaml:"iso,omitempty" json:"iso"`
+
+		Description string `yaml:"description,omitempty" json:"description"`
+
+		Os string `yaml:"os,omitempty" json:"os"`
+	} `yaml:"iso,omitempty" json:"iso"`
+
+	Bootstrap struct {
+		Bootstrap SourceBootstrap `yaml:"bootstrap,omitempty" json:"bootstrap"`
+
+		Description string `yaml:"description,omitempty" json:"description"`
+
+		Os string `yaml:"os,omitempty" json:"os"`
+	} `yaml:"bootstrap,omitempty" json:"bootstrap"`
+}
+
+// #SourceInput — one of the four origins, exactly one.
+type SourceInput map[string]any
