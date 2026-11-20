@@ -21,10 +21,12 @@
 // source names the os precisely so that os owns every form conversion. An os node that
 // omitted them could not answer the one question #Source asks it.
 //
-// THE PARITY GUARD: os_parity_test.go compares this def's field names against spec's #Os
-// (added in opencharly/spec#402), descending into the inner defs, for the reason
-// schema_parity_test.go exists: when the two drift, the failure reads as "the field does
-// not exist" rather than "the two defs disagree".
+// THE PARITY GUARD: TestOsInputAddsExactlyOsFields, in schema_parity_test.go, compares this
+// def's TOP-LEVEL field names against spec's #Os (added in opencharly/spec#402) in both
+// directions, for the reason that file's header gives: when the two drift, the failure reads
+// as "the field does not exist" rather than "the two defs disagree". It compares NAMES only
+// and does not descend into the inner defs — the inner shapes here are #Ds* defs shared with
+// #DistroInput, and those are already guarded by TestEveryMirroredDefMatchesSpec.
 
 // ── the five fields an os adds ───────────────────────────────────────────────
 

@@ -150,7 +150,7 @@ func topLevelFields(t *testing.T, src, name string) []string {
 	return out
 }
 
-// TestOsInputMatchesSpecOs is the same guard for the SECOND word this plugin serves.
+// TestOsInputAddsExactlyOsFields is the same guard for the SECOND word this plugin serves.
 //
 // It exists because the failure mode is already documented three times over in this file's
 // header: when the plugin's mirror of spec's authored surface drifts, core accepts a field
