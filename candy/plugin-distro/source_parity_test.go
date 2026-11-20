@@ -18,6 +18,7 @@ package distrokind
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -82,17 +83,31 @@ func TestSourceAltHasExactlySpecsFourOrigins(t *testing.T) {
 		}
 	}
 
-	// EXACTLY four, both sides: a fifTH arm here is a word core refuses.
-	arms := 0
-	for _, origin := range []string{"oci", "disk", "iso", "bootstrap"} {
-		if strings.Contains(src, "\t"+origin+": {\n\t\t"+origin+"!:") {
-			arms++
+	// EXACTLY four: the arms are ENUMERATED from the union's own body rather than counted over
+	// the four names this test already knows. Counting the known names cannot detect a fifth —
+	// which is what the previous version of this block did, while its comment claimed otherwise.
+	got := unionArms(t, src, "#SourceAlt")
+	want := map[string]bool{"oci": true, "disk": true, "iso": true, "bootstrap": true}
+	for _, arm := range got {
+		if !want[arm] {
+			t.Errorf("#SourceAlt declares the %q arm, which spec's #SourceAlt does not — an "+
+				"authored %s origin would pass this plugin and fail core", arm, arm)
 		}
 	}
-	if arms != 4 {
-		t.Errorf("#SourceAlt has %d well-formed origin arms, want exactly 4 (oci, disk, iso, "+
-			"bootstrap) — D-SRC-1 admits exactly one origin, and the union is what enforces it",
-			arms)
+	for arm := range want {
+		found := false
+		for _, g := range got {
+			if g == arm {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("#SourceAlt is missing the %q arm", arm)
+		}
+	}
+	if len(got) != 4 {
+		t.Errorf("#SourceAlt declares %d arm(s) %v, want exactly 4 (oci, disk, iso, bootstrap) — "+
+			"D-SRC-1 admits exactly one origin, and the union is what enforces it", len(got), got)
 	}
 }
 
@@ -145,4 +160,44 @@ func defShape(src string) string {
 		b.WriteString(line + "\n")
 	}
 	return b.String()
+}
+
+// unionArms enumerates the ARM NAMES of an S4 union def — the top-level `word: {` keys of its
+// body, at the union's own nesting level.
+//
+// It exists because a test that loops over the names it already expects cannot detect a NEW one:
+// it would pass with a fifth arm present, which is exactly what the comment above it claimed it
+// would not.
+func unionArms(t *testing.T, src, defName string) []string {
+	t.Helper()
+	lines := strings.Split(defShape(src), "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), defName+":") {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatalf("%s not found in the schema source", defName)
+	}
+	var arms []string
+	depth := 0
+	armRE := regexp.MustCompile(`^\t([a-z_]+): \{$`)
+	for _, line := range lines[start:] {
+		// At depth 1 we are inside the union body: a `word: {` there is an arm.
+		if depth == 1 {
+			if m := armRE.FindStringSubmatch(line); m != nil {
+				arms = append(arms, m[1])
+			}
+		}
+		depth += strings.Count(line, "{") - strings.Count(line, "}")
+		if depth <= 0 && strings.Contains(line, "}") && len(arms) > 0 {
+			break
+		}
+	}
+	if len(arms) == 0 {
+		t.Fatalf("%s parsed to ZERO arms — the extractor, not the schema, is broken", defName)
+	}
+	return arms
 }
