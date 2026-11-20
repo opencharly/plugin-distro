@@ -149,3 +149,54 @@ func topLevelFields(t *testing.T, src, name string) []string {
 	sort.Strings(out)
 	return out
 }
+
+// TestOsInputMatchesSpecOs is the same guard for the SECOND word this plugin serves.
+//
+// It exists because the failure mode is already documented three times over in this file's
+// header: when the plugin's mirror of spec's authored surface drifts, core accepts a field
+// and the plugin refuses it with `field not allowed`, which reads like the field does not
+// exist. `os:` is a NEW word, so it has no drift yet — and this test is what keeps it that
+// way, from the first commit rather than after the first confusing rejection.
+//
+// The comparison is against spec's #Os, added in opencharly/spec#402. #OsInput's shared half
+// is a field-for-field mirror of #Distro, so it is checked by TestEveryMirroredDefMatchesSpec
+// above; what is NEW here is the five fields #Os carries and #Distro does not, which is
+// exactly the surface that has no other guard.
+func TestOsInputAddsExactlyOsFields(t *testing.T) {
+	specSrc := specSchemaSource(t)
+	local, err := os.ReadFile(filepath.Join("schema", "os.cue"))
+	if err != nil {
+		t.Fatalf("reading this plugin's os schema: %v", err)
+	}
+
+	osFields := topLevelFields(t, string(local), "#OsInput")
+	specOs := topLevelFields(t, specSrc, "#Os")
+
+	// Every field spec's #Os declares must exist here. A MISSING field means an authored
+	// `os:` body core validates and this plugin then rejects.
+	for _, f := range specOs {
+		if !contains(osFields, f) {
+			t.Errorf("#OsInput does not mirror spec's #Os field %q — core would accept an "+
+				"authored `os:` body this plugin then refuses", f)
+		}
+	}
+
+	// And nothing ELSE: a field only this def has is a word the contract does not define, so
+	// it would be accepted here and rejected by core — the same drift from the other side.
+	for _, f := range osFields {
+		if !contains(specOs, f) {
+			t.Errorf("#OsInput declares %q, which spec's #Os does not — an authored `os:` body "+
+				"would pass this plugin and fail core", f)
+		}
+	}
+}
+
+// contains reports whether list holds want.
+func contains(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}

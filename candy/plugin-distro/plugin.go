@@ -23,11 +23,25 @@ var schemaFS embed.FS
 // NewProvider returns the kind provider for in-proc registration or out-of-proc serving.
 func NewProvider() pb.ProviderServer { return &provider{} }
 
-// NewMeta ships the distro kind's capability (Class "kind", word "distro") + its
-// self-contained CUE schema, via sdk.NewMeta → BuildCapabilities.
+// NewMeta ships this plugin's TWO kind capabilities + its self-contained CUE schema, via
+// sdk.NewMeta → BuildCapabilities.
+//
+// TWO WORDS, ONE VOCABULARY. `distro:` is the build vocabulary a box declares; `os:` is the
+// OPERATING SYSTEM a source names (DESIGN.cue:284, D-SRC-2). They share every inner shape —
+// a `bootstrap:` or `format:` block means the same thing on both — and differ only in what
+// an os must say about itself: description, family, package_manager, init. Serving both from
+// one plugin is what keeps the two from becoming two vocabularies, which is the R2 debt
+// opencharly/opencharly#1200 records.
+//
+// The word is not implied by the plugin: a multi-word provider learns it from
+// req.GetReserved() (see Invoke), which is why serving a second kind needs a case there and
+// not only a row here.
 func NewMeta() pb.PluginMetaServer {
 	return sdk.NewMeta("2026.176.3203",
-		[]sdk.ProvidedCapability{{Class: "kind", Word: "distro", InputDef: "#DistroInput"}},
+		[]sdk.ProvidedCapability{
+			{Class: "kind", Word: "distro", InputDef: "#DistroInput"},
+			{Class: "kind", Word: "os", InputDef: "#OsInput"},
+		},
 		schemaFS)
 }
 
@@ -38,6 +52,23 @@ type provider struct{ pb.UnimplementedProviderServer }
 func (provider) Invoke(_ context.Context, req *pb.InvokeRequest) (*pb.InvokeReply, error) {
 	switch req.GetOp() {
 	case sdk.OpLoad:
+		// The host dispatches kind-blindly, so the WORD arrives on the request rather than
+		// being implied by the plugin. Two words, two canonical types: an os body carries the
+		// five fields a distro body does not, so unmarshalling it into spec.Distro would
+		// silently drop them and hand the host back a body it had just validated as complete.
+		if req.GetReserved() == "os" {
+			var in spec.Os
+			if len(req.GetParamsJson()) > 0 {
+				if err := json.Unmarshal(req.GetParamsJson(), &in); err != nil {
+					return nil, fmt.Errorf("os kind: decode entity: %w", err)
+				}
+			}
+			out, err := json.Marshal(in)
+			if err != nil {
+				return nil, fmt.Errorf("os kind: marshal entity: %w", err)
+			}
+			return &pb.InvokeReply{ResultJson: out}, nil
+		}
 		var in spec.Distro
 		if len(req.GetParamsJson()) > 0 {
 			if err := json.Unmarshal(req.GetParamsJson(), &in); err != nil {
